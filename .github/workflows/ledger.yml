@@ -7,7 +7,7 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: ledger
+  group: data-write
   cancel-in-progress: false
 jobs:
   ledger:

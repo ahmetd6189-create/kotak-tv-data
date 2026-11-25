@@ -1,0 +1,35 @@
+name: Mac fiksturu
+# Her 2 saatte bir: football-data.org ucretsiz katmanindan maclari okur, fixtures.json'u gunceller.
+# Anahtar yalniz depo gizli ayarinda: Settings > Secrets and variables > Actions > FOOTBALL_DATA_KEY
+on:
+  schedule:
+    - cron: '7 */2 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: data-write
+  cancel-in-progress: false
+jobs:
+  fixtures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fiksturu guncelle
+        env:
+          FOOTBALL_DATA_KEY: ${{ secrets.FOOTBALL_DATA_KEY }}
+        run: node build-fixtures.cjs
+      - name: Degistiyse kaydet
+        run: |
+          if [ ! -f fixtures.json ]; then echo "dosya yok"; exit 0; fi
+          git add fixtures.json
+          if git diff --cached --quiet; then echo "degisiklik yok"; exit 0; fi
+          git config user.name "kotak-fixtures"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Mac fiksturu guncellendi"
+          git pull --rebase --quiet || true
+          git push
