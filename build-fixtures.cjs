@@ -6,6 +6,7 @@
 // Anahtarlar YALNIZ GitHub gizli ayarlarından okunur (FOOTBALL_DATA_KEY, API_FOOTBALL_KEY); dosyaya, kayda, çıktıya YAZILMAZ.
 // Bir kaynak o turda okunamazsa onun önceki maçları korunur; diğer kaynak etkilenmez.
 const fs=require('node:fs');const path=require('node:path');
+const {wikiFixtures}=require('./lib/wiki-fixtures.cjs');
 const FILE=path.join(__dirname,'fixtures.json');
 const DAY=86400000;
 const day=t=>new Date(t).toISOString().slice(0,10);
@@ -66,13 +67,18 @@ async function apiFootball(now){
  const old=prev?.m||[];
  const fd=await footballData(now).catch(e=>{note('football-data hatası:',String(e.message||e).slice(0,80));return null;});
  const af=await apiFootball(now).catch(e=>{note('api-football hatası:',String(e.message||e).slice(0,80));return null;});
- if(!fd&&!af)note('Hiçbir kaynak okunamadı; maçlar değiştirilmedi.');
- const isAf=x=>String(x.id).startsWith('af');
+ // Wikipedia: Avrupa Ligi / Konferans Ligi ve büyük kulüplerin Süper Lig / Kupa maçları (anahtarsız, ücretsiz).
+ let wk=await wikiFixtures(now,note,now-DAY,now+8*DAY).catch(e=>{note('wikipedia hatası:',String(e.message||e).slice(0,80));return null;});
+ if(wk&&!wk.length)wk=null;
+ // api-football çalışıyorsa Süper Lig/Kupa ondan (skor ve durum daha güncel); Wikipedia'nın aynıları atlanır.
+ if(wk&&af&&af.length)wk=wk.filter(x=>!String(x.c).startsWith('tur.'));
+ if(!fd&&!af&&!wk)note('Hiçbir kaynak okunamadı; maçlar değiştirilmedi.');
+ const isAf=x=>String(x.id).startsWith('af'),isWk=x=>String(x.id).startsWith('wk');
  // Okunamayan kaynağın önceki maçları korunur (yalnız hâlâ pencere içindekiler).
  const keep=(list)=>list.filter(x=>x.t>now-2*DAY);
- const m=[...(fd||keep(old.filter(x=>!isAf(x)))),...(af||keep(old.filter(isAf)))];
+ const m=[...(fd||keep(old.filter(x=>!isAf(x)&&!isWk(x)))),...(af||keep(old.filter(isAf))),...(wk||keep(old.filter(isWk)))];
  m.sort((p,q)=>p.t-q.t||String(p.id).localeCompare(String(q.id)));
  if(prev&&JSON.stringify(prev.m)===JSON.stringify(m)&&JSON.stringify(prev.notes||[])===JSON.stringify(notes)){console.log('fikstür aynı:',m.length,'maç');return;}
- fs.writeFileSync(FILE,JSON.stringify({v:1,updated:now,source:'football-data.org + api-football.com (ücretsiz katmanlar)',notes,m})+'\n');
+ fs.writeFileSync(FILE,JSON.stringify({v:1,updated:now,source:'football-data.org + api-football.com (ücretsiz katmanlar) + Wikipedia (CC BY-SA)',notes,m})+'\n');
  console.log('fikstür:',m.length,'maç');
 })().catch(e=>{console.error('fikstür hatası:',String(e.message||e).slice(0,120));process.exit(1);});

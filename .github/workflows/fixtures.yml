@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - build-fixtures.cjs
+      - lib/wiki-fixtures.cjs
       - .github/workflows/fixtures.yml
 permissions:
   contents: write
