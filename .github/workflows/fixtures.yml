@@ -1,6 +1,6 @@
 name: Mac fiksturu
-# Her 2 saatte bir: football-data.org ucretsiz katmanindan maclari okur, fixtures.json'u gunceller.
-# Anahtar yalniz depo gizli ayarinda: Settings > Secrets and variables > Actions > FOOTBALL_DATA_KEY
+# Her 2 saatte bir: football-data.org + api-football.com ucretsiz katmanlarindan maclari okur, fixtures.json'u gunceller.
+# Anahtarlar yalniz depo gizli ayarinda: Settings > Secrets and variables > Actions > FOOTBALL_DATA_KEY, API_FOOTBALL_KEY
 on:
   schedule:
     - cron: '7 */2 * * *'
@@ -28,6 +28,7 @@ jobs:
       - name: Fiksturu guncelle
         env:
           FOOTBALL_DATA_KEY: ${{ secrets.FOOTBALL_DATA_KEY }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: node build-fixtures.cjs
       - name: Degistiyse kaydet
         run: |
