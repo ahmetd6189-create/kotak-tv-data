@@ -7,7 +7,7 @@ const BASE='https://epgshare01.online/epgshare01/';
 /** Türkiye (beIN, S Sport, TRT Spor, A Spor, Tabii, Eurosport), S Sport Plus, beIN MENA ve büyük Avrupa ülkelerinin spor kanalları. */
 const SOURCES=['TR1','TR3','SSPORTPLUS1','BEIN1','UK1','DE1','ES1','IT1','FR1','NL1','PT1'].map(c=>`epg_ripper_${c}.xml.gz`);
 const FILE=path.join(__dirname,'ledger.json');
-const DAY=86400000,KEEP=14*DAY,NEW_MATCH=10*DAY;
+const DAY=86400000,KEEP=14*DAY,NEW_MATCH=10*DAY,SHORT=75*60000,RECHECK=6*3600000;
 const decode=s=>s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;|&#39;/g,"'").replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(+n)).trim();
 function xmltvTime(v){const m=/^(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)?\s*([+-]\d{4})?/.exec(v||'');if(!m)return NaN;const off=m[7]?(m[7][0]==='-'?-1:1)*(+m[7].slice(1,3)*60+ +m[7].slice(3)):0;return Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0))-off*60000;}
 async function download(name){
@@ -23,6 +23,8 @@ function airings(xml){
  for(const m of xml.matchAll(/<programme\b([^>]*)>([\s\S]*?)<\/programme>/g)){
   const ch=/channel="([^"]+)"/.exec(m[1])?.[1];if(!ch||!sport.has(ch))continue;programmes++;
   const start=xmltvTime(/start="([^"]+)"/.exec(m[1])?.[1]);if(!Number.isFinite(start))continue;
+  // 75 dk'dan kısa "A - B" yayını kısaltılmış tekrar/özettir (ör. 26.11.2026 beIN 20:30–21:00 Göztepe - Trabzonspor); ilk yayın sayılmaz.
+  const stop=xmltvTime(/stop="([^"]+)"/.exec(m[1])?.[1]);if(Number.isFinite(stop)&&stop>start&&stop-start<SHORT)continue;
   const t=/<title[^>]*>([\s\S]*?)<\/title>/.exec(m[2]);if(!t)continue;const title=decode(t[1]);const f=fold(title);
   if(REPLAY_WORDS.test(f)||HIGHLIGHT_WORDS.test(f))continue;const key=pairKey(title);if(key)out.push({key,start});
  }
@@ -31,13 +33,18 @@ function airings(xml){
 (async()=>{
  const now=Date.now();let prev={v:1,since:0,first:{}};try{prev=JSON.parse(fs.readFileSync(FILE,'utf8'));}catch{}
  const first={...(prev.first||{})};const sources=[];let ok=0,earliest=Infinity;
+ // Son 6 saatteki ve gelecekteki kayıtlar her çalışmada kaynaklardan yeniden hesaplanır (kaynaklar bunları hâlâ listeler):
+ // daha önce yanlış yazılmış bir kayıt (ör. kısa tekrar) böylece kendiliğinden düzelir. Eski kayıtlar korunur.
+ // Bir kaynak okunamadıysa yeniden hesaplama yapılmaz (o kaynağın kayıtları kaybolmasın).
+ const read=[];
  for(const name of SOURCES){
-  try{const xml=await download(name);const r=airings(xml);ok++;
-   for(const a of r.airings){if(a.start<earliest)earliest=a.start;const known=first[a.key];if(known===undefined||a.start<known||a.start-known>NEW_MATCH)first[a.key]=a.start;}
+  try{const xml=await download(name);const r=airings(xml);ok++;read.push(r);
    sources.push({file:name,channels:r.channels,programmes:r.programmes,matches:r.airings.length});console.log(name,'spor kanalı',r.channels,'maç yayını',r.airings.length);}
   catch(e){sources.push({file:name,error:String(e.message||e).slice(0,80)});console.log(name,'HATA',e.message);}
  }
  if(!ok){console.log('Hiçbir kaynak okunamadı; defter değiştirilmedi.');return;}
+ if(ok===SOURCES.length){let n=0;for(const [k,at] of Object.entries(first))if(at>now-RECHECK){delete first[k];n++;}console.log('yeniden hesaplanan kayıt:',n);}
+ for(const r of read)for(const a of r.airings){if(a.start<earliest)earliest=a.start;const known=first[a.key];if(known===undefined||a.start<known||a.start-known>NEW_MATCH)first[a.key]=a.start;}
  for(const [k,at] of Object.entries(first))if(at<now-KEEP)delete first[k];
  // since: defterin kesintisiz izlediği başlangıç. Uygulama "CANLI" yazmak için maçın bundan en az 1 gün sonra olmasını ister.
  const since=prev.since||Math.min(earliest,now);
