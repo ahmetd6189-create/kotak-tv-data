@@ -1,0 +1,31 @@
+name: Trend listesi
+# Gunde bir: Wikipedia sayfa goruntulenmeleri (CC0) + Wikidata ile en cok ilgi goren film/dizi listesi -> trend.json
+on:
+  schedule:
+    - cron: '41 4 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: data-write
+  cancel-in-progress: false
+jobs:
+  trend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Trendi guncelle
+        run: node build-trend.cjs
+      - name: Degistiyse kaydet
+        run: |
+          if git diff --quiet -- trend.json && git ls-files --error-unmatch trend.json >/dev/null 2>&1; then echo "degisiklik yok"; exit 0; fi
+          git config user.name "kotak-trend"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trend.json
+          git commit -m "Trend listesi guncellendi"
+          git pull --rebase
+          git push
